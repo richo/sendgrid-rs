@@ -8,7 +8,7 @@ extern crate data_encoding;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-extern crate url;
+extern crate serde_urlencoded;
 
 pub mod errors;
 mod mail;
@@ -17,4 +17,3 @@ pub mod v3;
 
 pub use mail::{Mail,Destination};
 pub use sg_client::SGClient;
-

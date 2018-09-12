@@ -4,14 +4,18 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-
 use serde_json;
 
 macro_rules! add_field {
-    // Create a setter that appends
-    ($method:ident << $field:ident: $ty:ty) => {
-        pub fn $method(mut self, data: $ty) -> Mail<'a> {
-            self.$field.push(data);
+    // Create a setter that destructures a destination and appends.
+    ($method:ident << $field:ident, $fieldname:ident) => {
+        pub fn $method(mut self, data: Destination<'a>) -> Mail<'a> {
+            let Destination {
+                address,
+                name,
+            } = data;
+            self.$field.push(address);
+            self.$fieldname.push(name);
             self
         }
     };
@@ -19,7 +23,7 @@ macro_rules! add_field {
     // Create a setter that stores
     ($method:ident = $field:ident: $ty:ty) => {
         pub fn $method(mut self, data: $ty) -> Mail<'a> {
-            self.$field = data;
+            self.$field = Some(data);
             self
         }
     };
@@ -39,60 +43,73 @@ pub struct Destination<'a> {
     pub name: &'a str,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Serialize)]
 /// This is a representation of a valid SendGrid message. It has support for
 /// all of the fields in the V2 API.
 pub struct Mail<'a> {
-    pub to: Vec<Destination<'a>>,
+    pub to: Vec<&'a str>,
+    pub toname: Vec<&'a str>,
     pub cc: Vec<&'a str>,
+    pub ccname: Vec<&'a str>,
     pub bcc: Vec<&'a str>,
+    pub bccname: Vec<&'a str>,
     pub from: &'a str,
+    pub fromname: &'a str,
     pub subject: &'a str,
-    pub html: &'a str,
-    pub text: &'a str,
-    pub from_name: &'a str,
-    pub reply_to: &'a str,
-    pub date: &'a str,
+    pub html: Option<&'a str>,
+    pub text: Option<&'a str>,
+    pub replyto: Option<&'a str>,
+    pub date: Option<&'a str>,
     pub attachments: HashMap<String, String>,
     pub content: HashMap<String, &'a str>,
     pub headers: HashMap<String, &'a str>,
-    pub x_smtpapi: &'a str,
+    pub x_smtpapi: Option<&'a str>,
 }
 
 impl<'a> Mail<'a> {
     /// Returns a new Mail struct to send with a client. All of the fields are
     /// initially empty.
-    pub fn new() -> Mail<'a> {
+    pub fn new(to: Destination<'a>, subject: &'a str, from: Destination<'a>) -> Mail<'a> {
+        // We take the bare minimum number of arguments here to avoid having to check them later
+        let Destination {
+            address: fromaddress,
+            name: fromname,
+        } = from;
+
+        let Destination {
+            address: toaddress,
+            name: toname,
+        } = to;
+
         Mail {
-            to: Vec::new(),
+            to: vec![toaddress],
+            toname: vec![toname],
             cc: Vec::new(),
+            ccname: Vec::new(),
             bcc: Vec::new(),
-            from: "",
-            subject: "",
-            html: "",
-            text: "",
-            from_name: "",
-            reply_to: "",
-            date: "",
+            bccname: Vec::new(),
+            from: fromaddress,
+            fromname: fromname,
+            subject: subject,
+            html: None,
+            text: None,
+            replyto: None,
+            date: None,
             attachments: HashMap::new(),
             content: HashMap::new(),
             headers: HashMap::new(),
-            x_smtpapi: "",
+            x_smtpapi: None,
         }
     }
 
     /// Adds a CC recipient to the Mail struct.
-    add_field!(add_cc << cc: &'a str);
+    add_field!(add_cc << cc, ccname);
 
     /// Adds a to recipient to the Mail struct.
-    add_field!(add_to << to: Destination<'a>);
+    add_field!(add_to << to, toname);
 
-    /// Set the from address for the Mail struct. This can be changed, but there
-    /// is only one from address per message.
-    add_field!(add_from = from: &'a str);
-
-    /// Set the subject of the message.
-    add_field!(add_subject = subject: &'a str);
+    /// Add a BCC address to the message.
+    add_field!(add_bcc << bcc, bccname);
 
     /// This function sets the HTML content for the message.
     add_field!(add_html = html: &'a str);
@@ -100,14 +117,8 @@ impl<'a> Mail<'a> {
     /// Set the text content of the message.
     add_field!(add_text = text: &'a str);
 
-    /// Add a BCC address to the message.
-    add_field!(add_bcc << bcc: &'a str);
-
-    /// Set the from name for the message.
-    add_field!(add_from_name = from_name: &'a str);
-
     /// Set the reply to address for the message.
-    add_field!(add_reply_to = reply_to: &'a str);
+    add_field!(add_reply_to = replyto: &'a str);
 
     /// Set the date for the message. This must be a valid RFC 822 timestamp.
     // TODO(richo) Should this be a chronos::Utc ?
@@ -115,6 +126,7 @@ impl<'a> Mail<'a> {
 
     /// Convenience method when using Mail as a builder
     pub fn build(self) -> Mail<'a> {
+        assert!(self.text.is_some() || self.html.is_some(), "Need exactly one of text or html set");
         self
     }
 

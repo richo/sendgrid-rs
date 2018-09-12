@@ -17,15 +17,10 @@ fn main() {
     let mut x_smtpapi = String::new();
     x_smtpapi.push_str(r#"{"unique_args":{"test":7}}"#);
 
-    let mail_info = Mail::new()
-        .add_to(Destination {
-            address:"you@example.com",
-            name: "you there",
-        })
-        .add_from("some@some.com")
-        .add_subject("Rust is rad")
+    let mail_info = Mail::new(Destination { address:"you@example.com", name: "you there", },
+                              "Rust is rad",
+                              Destination { address:"me@example.com", name: "me here", })
         .add_html("<h1>Hello from SendGrid!</h1>")
-        .add_from_name("Test")
         .add_header("x-cool".to_string(), "indeed")
         .add_x_smtpapi(&x_smtpapi);
 
